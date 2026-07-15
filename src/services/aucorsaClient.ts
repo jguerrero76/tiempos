@@ -10,6 +10,16 @@ let cachedNonce: string | undefined;
 let nonceFetchedAt = 0;
 
 export class AucorsaAuthError extends Error {}
+export class AucorsaConfigError extends Error {}
+
+function requireCookie(): string {
+  if (!config.aucorsaCookie) {
+    throw new AucorsaConfigError(
+      "Falta la variable de entorno AUCORSA_COOKIE. Configúrala en tu .env (local) o en las Environment Variables del proyecto en Vercel y vuelve a desplegar."
+    );
+  }
+  return config.aucorsaCookie;
+}
 
 function baseHeaders(): Record<string, string> {
   return {
@@ -18,7 +28,7 @@ function baseHeaders(): Record<string, string> {
     "cache-control": "no-cache",
     pragma: "no-cache",
     "user-agent": config.aucorsaUserAgent,
-    cookie: config.aucorsaCookie,
+    cookie: requireCookie(),
     "x-requested-with": "XMLHttpRequest",
   };
 }
@@ -95,6 +105,8 @@ async function requestEstimations(stopId: string, line: string | undefined, nonc
 }
 
 export async function fetchEstimations({ stopId, line }: EstimationsParams): Promise<unknown> {
+  requireCookie(); // falla rápido y con un mensaje claro si falta config, antes de intentar el nonce
+
   const nonce = await getNonce(line, false);
 
   try {

@@ -1,20 +1,14 @@
 import "dotenv/config";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `Falta la variable de entorno ${name}. Revisa tu archivo .env (mira .env.example).`
-    );
-  }
-  return value;
-}
-
+// No lanzamos aquí si falta AUCORSA_COOKIE: este módulo se carga en el arranque de
+// la función serverless, y un throw a nivel de módulo tira abajo TODA la función
+// (incluida /health) con un error genérico de la plataforma en vez de un JSON claro.
+// La comprobación real vive en aucorsaClient/rutas, donde se puede responder 500 con detalle.
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: process.env.DATABASE_URL,
   aucorsaBaseUrl: process.env.AUCORSA_BASE_URL ?? "https://aucorsa.es",
-  aucorsaCookie: requireEnv("AUCORSA_COOKIE"),
+  aucorsaCookie: process.env.AUCORSA_COOKIE || undefined,
   aucorsaNonce: process.env.AUCORSA_NONCE || undefined,
   aucorsaUserAgent:
     process.env.AUCORSA_USER_AGENT ??
