@@ -21,15 +21,14 @@ tiemposRouter.get("/tiempos", async (req, res) => {
     return;
   }
 
+  // El body es el array a secas (mismo contrato que get_stop_times() en el cliente
+  // Python de referencia); los metadatos de cache van en cabeceras, no en el body.
   if (!fresh) {
     const memHit = cache.getFromMemory(stopId, line);
     if (memHit) {
-      res.json({
-        data: memHit.payload,
-        cached: true,
-        source: "memory",
-        fetchedAt: new Date(memHit.fetchedAt).toISOString(),
-      });
+      res.set("X-Cache", "HIT");
+      res.set("X-Cache-Fetched-At", new Date(memHit.fetchedAt).toISOString());
+      res.json(memHit.payload);
       return;
     }
   }
@@ -41,19 +40,17 @@ tiemposRouter.get("/tiempos", async (req, res) => {
     cache.upsertDb(stopId, line, payload).catch((err) => {
       console.error("No se pudo guardar la respuesta en la cache de base de datos:", err);
     });
-    res.json({ data: payload, cached: false, fetchedAt: new Date().toISOString() });
+    res.set("X-Cache", "MISS");
+    res.set("X-Cache-Fetched-At", new Date().toISOString());
+    res.json(payload);
   } catch (err) {
     console.error("Error consultando AUCORSA:", err);
 
     const dbHit = await cache.getFromDb(stopId, line).catch(() => undefined);
     if (dbHit) {
-      res.json({
-        data: dbHit.payload,
-        cached: true,
-        stale: true,
-        source: "db",
-        fetchedAt: dbHit.fetchedAt,
-      });
+      res.set("X-Cache", "STALE");
+      res.set("X-Cache-Fetched-At", new Date(dbHit.fetchedAt).toISOString());
+      res.json(dbHit.payload);
       return;
     }
 
