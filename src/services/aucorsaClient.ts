@@ -17,22 +17,72 @@ const WP_API_SETTINGS_REGEX = /wpApiSettings\s*=\s*(\{[\s\S]*?\});/;
 const GENERIC_NONCE_REGEX = /"nonce"\s*:\s*"([a-f0-9]+)"/i;
 const NONCE_TTL_MS = 10 * 60 * 1000;
 
-let cachedNonce: string | undefined;
-let nonceFetchedAt = 0;
-
 export class AucorsaAuthError extends Error {}
 export class AucorsaConfigError extends Error {}
 
-function requireCookie(): string {
-  if (!config.aucorsaCookie) {
-    throw new AucorsaConfigError(
-      "Falta la variable de entorno AUCORSA_COOKIE. Configúrala en tu .env (local) o en las Environment Variables del proyecto en Vercel y vuelve a desplegar."
-    );
-  }
-  return config.aucorsaCookie;
+// Una "sesión" = una cuenta AUCORSA (su cookie), con su propio nonce cacheado y su
+// propio estado de salud. El nonce está atado a la sesión de WordPress, así que no se
+// puede compartir entre cuentas: cada una necesita su propio ciclo de refresco.
+interface Session {
+  cookie: string;
+  cachedNonce?: string;
+  nonceFetchedAt: number;
+  unhealthyUntil: number;
 }
 
-function baseHeaders(): Record<string, string> {
+let sessions: Session[] = [];
+let sessionsSourceLength = -1;
+let roundRobinIndex = 0;
+
+// Reconstruye el pool si cambia la config (relevante sobre todo en tests/dev con
+// reinicios en caliente; en producción se calcula una sola vez por instancia fría).
+function getSessions(): Session[] {
+  if (sessionsSourceLength !== config.aucorsaCookies.length) {
+    sessions = config.aucorsaCookies.map((cookie) => ({
+      cookie,
+      nonceFetchedAt: 0,
+      unhealthyUntil: 0,
+    }));
+    sessionsSourceLength = config.aucorsaCookies.length;
+    roundRobinIndex = 0;
+  }
+  return sessions;
+}
+
+function requireSessions(): Session[] {
+  const pool = getSessions();
+  if (pool.length === 0) {
+    throw new AucorsaConfigError(
+      "Falta configurar al menos una cuenta de AUCORSA. Define AUCORSA_COOKIE (una cuenta) o AUCORSA_COOKIES " +
+        "(varias, una cookie completa por línea) en tu .env o en las Environment Variables del proyecto en Vercel, y vuelve a desplegar."
+    );
+  }
+  return pool;
+}
+
+// Round-robin saltándose las cuentas en cooldown (403 reciente). Si todas están en
+// cooldown, probamos igualmente con la siguiente del turno: mejor un intento con una
+// cuenta "quemada" que fallar sin ni siquiera intentarlo.
+function pickSessionIndex(pool: Session[]): number {
+  const now = Date.now();
+  for (let i = 0; i < pool.length; i++) {
+    const idx = (roundRobinIndex + i) % pool.length;
+    if (pool[idx].unhealthyUntil <= now) {
+      roundRobinIndex = (idx + 1) % pool.length;
+      return idx;
+    }
+  }
+  const idx = roundRobinIndex % pool.length;
+  roundRobinIndex = (idx + 1) % pool.length;
+  return idx;
+}
+
+function markUnhealthy(session: Session): void {
+  session.unhealthyUntil = Date.now() + config.sessionCooldownMs;
+  session.cachedNonce = undefined;
+}
+
+function baseHeaders(session: Session): Record<string, string> {
   return {
     accept: "*/*",
     "accept-language": "es-ES,es;q=0.6",
@@ -47,7 +97,7 @@ function baseHeaders(): Record<string, string> {
     "sec-fetch-site": "same-origin",
     "sec-gpc": "1",
     "user-agent": config.aucorsaUserAgent,
-    cookie: requireCookie(),
+    cookie: session.cookie,
     "x-requested-with": "XMLHttpRequest",
   };
 }
@@ -73,17 +123,17 @@ function extractNonce(html: string): string | undefined {
   return genericMatch?.[1];
 }
 
-async function fetchPageHtml(line?: string): Promise<{ status: number; html: string }> {
+async function fetchPageHtml(session: Session, line?: string): Promise<{ status: number; html: string }> {
   const path = line ? `/linea/${encodeURIComponent(line)}/` : "/";
   const res = await fetch(`${config.aucorsaBaseUrl}${path}`, {
-    headers: baseHeaders(),
+    headers: baseHeaders(session),
   });
   return { status: res.status, html: await res.text() };
 }
 
-async function fetchFreshNonce(line?: string): Promise<string | undefined> {
+async function fetchFreshNonce(session: Session, line?: string): Promise<string | undefined> {
   try {
-    const { status, html } = await fetchPageHtml(line);
+    const { status, html } = await fetchPageHtml(session, line);
     if (status < 200 || status >= 300) return undefined;
     return extractNonce(html);
   } catch {
@@ -91,10 +141,10 @@ async function fetchFreshNonce(line?: string): Promise<string | undefined> {
   }
 }
 
-async function getNonce(line: string | undefined, forceRefresh: boolean): Promise<string> {
+async function getNonce(session: Session, line: string | undefined, forceRefresh: boolean): Promise<string> {
   const now = Date.now();
-  if (!forceRefresh && cachedNonce && now - nonceFetchedAt < NONCE_TTL_MS) {
-    return cachedNonce;
+  if (!forceRefresh && session.cachedNonce && now - session.nonceFetchedAt < NONCE_TTL_MS) {
+    return session.cachedNonce;
   }
 
   // El auto-scrape del nonce es una heurística (buscamos "nonce":"..." en el HTML de
@@ -103,14 +153,15 @@ async function getNonce(line: string | undefined, forceRefresh: boolean): Promis
   // en el primer intento lo preferimos y solo recurrimos al scraping si no hay uno.
   // Si ese intento falla (403) y se pide forceRefresh, ya no repetimos el mismo valor
   // manual (que sabemos que acaba de fallar): intentamos refrescar por scraping.
+  // (El AUCORSA_NONCE manual solo tiene sentido con una única cuenta.)
   if (!forceRefresh && config.aucorsaNonce) {
     return config.aucorsaNonce;
   }
 
-  const fresh = await fetchFreshNonce(line);
+  const fresh = await fetchFreshNonce(session, line);
   if (fresh) {
-    cachedNonce = fresh;
-    nonceFetchedAt = now;
+    session.cachedNonce = fresh;
+    session.nonceFetchedAt = now;
     return fresh;
   }
 
@@ -128,7 +179,12 @@ export interface EstimationsParams {
   line?: string;
 }
 
-async function requestEstimations(stopId: string, line: string | undefined, nonce: string): Promise<unknown> {
+async function requestEstimations(
+  session: Session,
+  stopId: string,
+  line: string | undefined,
+  nonce: string
+): Promise<unknown> {
   const url = new URL(`${config.aucorsaBaseUrl}/wp-json/aucorsa/v1/estimations/stop`);
   url.searchParams.set("line", "");
   url.searchParams.set("current_line", line ?? "");
@@ -137,7 +193,7 @@ async function requestEstimations(stopId: string, line: string | undefined, nonc
 
   const res = await fetch(url.toString(), {
     headers: {
-      ...baseHeaders(),
+      ...baseHeaders(session),
       referer: line
         ? `${config.aucorsaBaseUrl}/linea/${encodeURIComponent(line)}/`
         : config.aucorsaBaseUrl,
@@ -159,19 +215,45 @@ async function requestEstimations(stopId: string, line: string | undefined, nonc
   return res.json();
 }
 
-export async function fetchEstimations({ stopId, line }: EstimationsParams): Promise<unknown> {
-  requireCookie(); // falla rápido y con un mensaje claro si falta config, antes de intentar el nonce
-
-  const nonce = await getNonce(line, false);
+async function fetchWithSession(session: Session, stopId: string, line: string | undefined): Promise<unknown> {
+  const nonce = await getNonce(session, line, false);
 
   try {
-    return await requestEstimations(stopId, line, nonce);
+    return await requestEstimations(session, stopId, line, nonce);
   } catch (err) {
     if (!(err instanceof AucorsaAuthError)) throw err;
 
-    // El nonce cacheado puede haber caducado justo ahora: invalidamos y reintentamos una vez.
-    cachedNonce = undefined;
-    const refreshedNonce = await getNonce(line, true);
-    return await requestEstimations(stopId, line, refreshedNonce);
+    // El nonce cacheado puede haber caducado justo ahora: invalidamos y reintentamos
+    // una vez con esta misma cuenta antes de darla por mala.
+    session.cachedNonce = undefined;
+    const refreshedNonce = await getNonce(session, line, true);
+    return await requestEstimations(session, stopId, line, refreshedNonce);
   }
+}
+
+// Reparte las peticiones entre todas las cuentas configuradas por turno (round-robin),
+// para no concentrar todo el tráfico de la web bajo una sola sesión/IP de AUCORSA. Si
+// una cuenta falla la autenticación, se aparta unos minutos (AUCORSA_SESSION_COOLDOWN_MS)
+// y se reintenta con la siguiente antes de dar el error por definitivo.
+export async function fetchEstimations({ stopId, line }: EstimationsParams): Promise<unknown> {
+  const pool = requireSessions();
+  const attempts = Math.min(pool.length, 3);
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const idx = pickSessionIndex(pool);
+    const session = pool[idx];
+    try {
+      return await fetchWithSession(session, stopId, line);
+    } catch (err) {
+      lastError = err;
+      if (err instanceof AucorsaAuthError) {
+        markUnhealthy(session);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }

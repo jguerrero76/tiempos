@@ -49,6 +49,35 @@ web), puedes seguir funcionando actualizando `AUCORSA_NONCE` a mano y reiniciand
 La cookie de sesión, en cambio, no se puede refrescar automáticamente: cuando caduque
 (o cierres sesión), tendrás que repetir estos pasos y actualizar `AUCORSA_COOKIE`.
 
+## Varias cuentas AUCORSA (repartir carga / evitar bloqueos)
+
+Toda la web pasa ahora por esta API usando la(s) cuenta(s) que configures, en vez de
+cada visitante hablando directo con AUCORSA desde su propio navegador. Si el tráfico es
+alto, eso concentra muchas peticiones bajo una sola identidad, con riesgo de que
+Wordfence (el firewall de AUCORSA) lo trate como sospechoso y bloquee esa cuenta/IP.
+
+Para repartir la carga, define `AUCORSA_COOKIES` (en vez de `AUCORSA_COOKIE`) con una
+cookie completa por línea, una por cada cuenta AUCORSA que tengas:
+
+```
+AUCORSA_COOKIES="cookieyes-consent=...; wordpress_logged_in_...=cuenta1@example.com...
+cookieyes-consent=...; wordpress_logged_in_...=cuenta2@example.com..."
+```
+
+Comportamiento:
+
+- Las peticiones rotan entre cuentas por turno (round-robin) — no todas usan siempre
+  la misma.
+- Cada cuenta gestiona su propio nonce por separado (el nonce va atado a la sesión de
+  WordPress, no se puede compartir entre cuentas).
+- Si una cuenta falla la autenticación (403), se aparta automáticamente durante
+  `AUCORSA_SESSION_COOLDOWN_MS` (5 minutos por defecto) y las peticiones siguen
+  repartiéndose entre el resto, sin caída de servicio mientras quede al menos una
+  cuenta sana.
+
+Con una sola cuenta, sigue funcionando igual que antes con `AUCORSA_COOKIE` — no hace
+falta cambiar nada si no quieres varias.
+
 ## Setup
 
 ```bash
@@ -143,8 +172,11 @@ una app Express como función serverless en Vercel.
 En el dashboard de Vercel (Project → Settings → Environment Variables) tienes que
 configurar, como mínimo:
 
-- `AUCORSA_COOKIE` (obligatoria; si falta, **todas** las rutas devuelven 500, incluida `/health`)
-- `AUCORSA_BASE_URL`, `AUCORSA_NONCE`, `AUCORSA_USER_AGENT`, `CACHE_TTL_MS` (opcionales)
+- `AUCORSA_COOKIE` (una cuenta) o `AUCORSA_COOKIES` (varias, ver arriba) — obligatoria
+  alguna de las dos; si falta, `/api/tiempos` devuelve 500 con detalle (`/health` sigue
+  funcionando igual, no depende de esto)
+- `AUCORSA_BASE_URL`, `AUCORSA_NONCE`, `AUCORSA_USER_AGENT`, `CACHE_TTL_MS`,
+  `AUCORSA_SESSION_COOLDOWN_MS` (opcionales)
 - `DATABASE_URL` si quieres cache/histórico en Postgres (usa un proveedor con pooler,
   p. ej. Neon o Supabase, ya que cada instancia de función abre su propia conexión)
 
