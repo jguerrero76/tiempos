@@ -60,18 +60,54 @@ function extractNonce(html: string): string | undefined {
   return genericMatch?.[1];
 }
 
+async function fetchPageHtml(line?: string): Promise<{ status: number; html: string }> {
+  const path = line ? `/linea/${encodeURIComponent(line)}/` : "/";
+  const res = await fetch(`${config.aucorsaBaseUrl}${path}`, {
+    headers: baseHeaders(),
+  });
+  return { status: res.status, html: await res.text() };
+}
+
 async function fetchFreshNonce(line?: string): Promise<string | undefined> {
   try {
-    const path = line ? `/linea/${encodeURIComponent(line)}/` : "/";
-    const res = await fetch(`${config.aucorsaBaseUrl}${path}`, {
-      headers: baseHeaders(),
-    });
-    if (!res.ok) return undefined;
-    const html = await res.text();
+    const { status, html } = await fetchPageHtml(line);
+    if (status < 200 || status >= 300) return undefined;
     return extractNonce(html);
   } catch {
     return undefined;
   }
+}
+
+export interface NonceDebugInfo {
+  pageStatus: number;
+  htmlLength: number;
+  wpApiSettingsFound: boolean;
+  wpApiSettingsRaw?: string;
+  extractedNonce?: string;
+  nonceOccurrences: Array<{ index: number; context: string }>;
+}
+
+export async function debugNonce(line?: string): Promise<NonceDebugInfo> {
+  const { status, html } = await fetchPageHtml(line);
+
+  const apiSettingsMatch = html.match(WP_API_SETTINGS_REGEX);
+  const occurrences: NonceDebugInfo["nonceOccurrences"] = [];
+  const contextRegex = /nonce/gi;
+  let m: RegExpExecArray | null;
+  while ((m = contextRegex.exec(html)) && occurrences.length < 20) {
+    const start = Math.max(0, m.index - 60);
+    const end = Math.min(html.length, m.index + 60);
+    occurrences.push({ index: m.index, context: html.slice(start, end) });
+  }
+
+  return {
+    pageStatus: status,
+    htmlLength: html.length,
+    wpApiSettingsFound: Boolean(apiSettingsMatch),
+    wpApiSettingsRaw: apiSettingsMatch?.[1],
+    extractedNonce: extractNonce(html),
+    nonceOccurrences: occurrences,
+  };
 }
 
 async function getNonce(line: string | undefined, forceRefresh: boolean): Promise<string> {
