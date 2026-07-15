@@ -108,3 +108,39 @@ destino...), dime qué forma tiene la respuesta real de AUCORSA y lo ajustamos.
 npm run build
 npm start
 ```
+
+## Despliegue en Vercel
+
+El proyecto incluye `api/index.ts` (exporta la app de Express) y `vercel.json`
+(reenvía todas las rutas a esa función), que es la forma estándar de desplegar
+una app Express como función serverless en Vercel.
+
+En el dashboard de Vercel (Project → Settings → Environment Variables) tienes que
+configurar, como mínimo:
+
+- `AUCORSA_COOKIE` (obligatoria; si falta, **todas** las rutas devuelven 500, incluida `/health`)
+- `AUCORSA_BASE_URL`, `AUCORSA_NONCE`, `AUCORSA_USER_AGENT`, `CACHE_TTL_MS` (opcionales)
+- `DATABASE_URL` si quieres cache/histórico en Postgres (usa un proveedor con pooler,
+  p. ej. Neon o Supabase, ya que cada instancia de función abre su propia conexión)
+
+Después de añadir/editar variables de entorno hay que volver a desplegar (Vercel no
+las aplica a un deployment ya construido).
+
+### Verificar que funciona
+
+```bash
+curl https://tiempos-nine.vercel.app/health
+curl "https://tiempos-nine.vercel.app/api/tiempos?parada=413&linea=4"
+```
+
+- `/health` debería devolver `{"status":"ok"}`. Si da 500, revisa los logs de la
+  función en Vercel (Deployments → el deployment → Functions) — casi seguro falta
+  `AUCORSA_COOKIE`.
+- `/api/tiempos` debería devolver `{"data": ..., "cached": false, ...}` con datos
+  reales de AUCORSA. Un 502 con `detail` sobre el nonce/cookie significa que la
+  cookie ha caducado o `AUCORSA_COOKIE` está mal copiada.
+
+Nota: al ser funciones serverless, la cache en memoria (y el nonce cacheado) se
+resetean en cada arranque en frío de la función, así que verás más tráfico hacia
+`aucorsa.es` del que verías en un servidor persistente; para cache real entre
+invocaciones usa `DATABASE_URL`.
