@@ -1,14 +1,16 @@
 import { config } from "../config";
 
-// El endpoint devuelve rest_cookie_invalid_nonce cuando el nonce no es válido para la
-// acción 'wp_rest' (la comprobación estándar de la REST API de WordPress). aucorsa.es
-// usa el theme/builder Bricks, que expone en el HTML VARIOS nonces distintos en el
-// mismo objeto (bricksData): "nonce" (propio de Bricks, para sus rutas bricks/v1),
-// "formNonce" (formularios) y "wpRestNonce" (el nonce real de la acción 'wp_rest').
-// Confirmado por diagnóstico en vivo contra aucorsa.es/linea/4/: el que sirve es
-// "wpRestNonce", NO el campo genérico "nonce" (eso es lo que causaba los 403).
+// aucorsa.es usa el theme/builder Bricks, que expone en el HTML VARIOS nonces
+// distintos en el mismo objeto: "nonce" (propio de Bricks, rutas bricks/v1),
+// "formNonce" (formularios), "wpRestNonce" (la acción 'wp_rest' de WP core) y
+// "ajax_nonce" (en el objeto `ajax_vars`). Confirmado en vivo: el propio JS de la
+// página construye la petición real con `ajax_vars.ajax_nonce` (ver el <script> que
+// devuelve el propio endpoint de estimaciones), así que ese es el que hay que imitar;
+// en la práctica coincide con wpRestNonce, pero si algún día dejan de coincidir,
+// ajax_nonce es la fuente de verdad porque es literalmente lo que usa el sitio.
+const AJAX_NONCE_REGEX = /"ajax_nonce"\s*:\s*"([a-f0-9]+)"/i;
 const WP_REST_NONCE_REGEX = /"wpRestNonce"\s*:\s*"([a-f0-9]+)"/i;
-// Fallback por si esta clave cambia de nombre en el futuro: el objeto estándar que
+// Fallback por si estas claves cambian de nombre en el futuro: el objeto estándar que
 // WordPress core genera al encolar el script "wp-api-request".
 const WP_API_SETTINGS_REGEX = /wpApiSettings\s*=\s*(\{[\s\S]*?\});/;
 // Último recurso: cualquier "nonce":"..", puede coger el de otro plugin.
@@ -51,6 +53,9 @@ function baseHeaders(): Record<string, string> {
 }
 
 function extractNonce(html: string): string | undefined {
+  const ajaxNonceMatch = html.match(AJAX_NONCE_REGEX);
+  if (ajaxNonceMatch) return ajaxNonceMatch[1];
+
   const wpRestMatch = html.match(WP_REST_NONCE_REGEX);
   if (wpRestMatch) return wpRestMatch[1];
 
