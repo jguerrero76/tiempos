@@ -1,9 +1,13 @@
 import { config } from "../config";
 
-// El nonce viene incrustado por WordPress en el HTML de la web (wp_localize_script).
-// No conocemos el nombre exacto de la variable, así que buscamos cualquier campo
-// "nonce":"..." en el HTML devuelto.
-const NONCE_REGEX = /"nonce"\s*:\s*"([a-f0-9]+)"/i;
+// El endpoint devuelve rest_cookie_invalid_nonce cuando el nonce no es válido para la
+// acción 'wp_rest' (la comprobación estándar de la REST API de WordPress). Ese nonce
+// se expone en el HTML como `wpApiSettings = {"root":...,"nonce":"..."}`, que es lo que
+// genera WordPress core al encolar el script "wp-api-request". Un grep genérico de
+// "nonce":".." podía coger el nonce de otro plugin de la página, que no sirve aquí.
+const WP_API_SETTINGS_REGEX = /wpApiSettings\s*=\s*(\{[\s\S]*?\});/;
+// Fallback por si el sitio no usa wp-api-request tal cual: cualquier "nonce":"..".
+const GENERIC_NONCE_REGEX = /"nonce"\s*:\s*"([a-f0-9]+)"/i;
 const NONCE_TTL_MS = 10 * 60 * 1000;
 
 let cachedNonce: string | undefined;
@@ -41,6 +45,21 @@ function baseHeaders(): Record<string, string> {
   };
 }
 
+function extractNonce(html: string): string | undefined {
+  const apiSettingsMatch = html.match(WP_API_SETTINGS_REGEX);
+  if (apiSettingsMatch) {
+    try {
+      const parsed = JSON.parse(apiSettingsMatch[1]);
+      if (typeof parsed.nonce === "string") return parsed.nonce;
+    } catch {
+      // el objeto no era JSON válido, seguimos con el fallback genérico
+    }
+  }
+
+  const genericMatch = html.match(GENERIC_NONCE_REGEX);
+  return genericMatch?.[1];
+}
+
 async function fetchFreshNonce(line?: string): Promise<string | undefined> {
   try {
     const path = line ? `/linea/${encodeURIComponent(line)}/` : "/";
@@ -49,8 +68,7 @@ async function fetchFreshNonce(line?: string): Promise<string | undefined> {
     });
     if (!res.ok) return undefined;
     const html = await res.text();
-    const match = html.match(NONCE_REGEX);
-    return match?.[1];
+    return extractNonce(html);
   } catch {
     return undefined;
   }
