@@ -145,7 +145,18 @@ async function requestEstimations(stopId: string, line: string | undefined, nonc
     throw new Error(`AUCORSA respondió con status ${res.status}. Respuesta: ${body.slice(0, 500)}`);
   }
 
-  return res.json();
+  // AUCORSA normalmente envuelve el fragmento HTML como un string JSON
+  // (`"<div>...</div>"`), pero no siempre: a veces el body ya es el HTML sin envolver,
+  // o un objeto distinto. Igual que el cliente de referencia: si al parsear como JSON
+  // no sale un string, nos quedamos con el texto crudo tal cual.
+  const bodyText = await res.text();
+  try {
+    const parsed = JSON.parse(bodyText);
+    if (typeof parsed === "string") return parsed;
+  } catch {
+    // no era JSON válido, usamos el texto tal cual
+  }
+  return bodyText;
 }
 
 export async function fetchEstimations({ stopId, line }: EstimationsParams): Promise<unknown> {
