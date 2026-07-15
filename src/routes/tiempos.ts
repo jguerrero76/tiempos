@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { AucorsaAuthError, fetchEstimations } from "../services/aucorsaClient";
 import * as cache from "../services/cache";
+import { parseEstimations } from "../services/estimationsParser";
 
 export const tiemposRouter = Router();
 
@@ -34,7 +35,8 @@ tiemposRouter.get("/tiempos", async (req, res) => {
   }
 
   try {
-    const payload = await fetchEstimations({ stopId, line });
+    const rawHtml = await fetchEstimations({ stopId, line });
+    const payload = parseEstimations(String(rawHtml));
     cache.setMemory(stopId, line, payload);
     cache.upsertDb(stopId, line, payload).catch((err) => {
       console.error("No se pudo guardar la respuesta en la cache de base de datos:", err);
