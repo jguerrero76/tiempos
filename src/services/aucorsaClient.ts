@@ -1,12 +1,17 @@
 import { config } from "../config";
 
 // El endpoint devuelve rest_cookie_invalid_nonce cuando el nonce no es válido para la
-// acción 'wp_rest' (la comprobación estándar de la REST API de WordPress). Ese nonce
-// se expone en el HTML como `wpApiSettings = {"root":...,"nonce":"..."}`, que es lo que
-// genera WordPress core al encolar el script "wp-api-request". Un grep genérico de
-// "nonce":".." podía coger el nonce de otro plugin de la página, que no sirve aquí.
+// acción 'wp_rest' (la comprobación estándar de la REST API de WordPress). aucorsa.es
+// usa el theme/builder Bricks, que expone en el HTML VARIOS nonces distintos en el
+// mismo objeto (bricksData): "nonce" (propio de Bricks, para sus rutas bricks/v1),
+// "formNonce" (formularios) y "wpRestNonce" (el nonce real de la acción 'wp_rest').
+// Confirmado por diagnóstico en vivo contra aucorsa.es/linea/4/: el que sirve es
+// "wpRestNonce", NO el campo genérico "nonce" (eso es lo que causaba los 403).
+const WP_REST_NONCE_REGEX = /"wpRestNonce"\s*:\s*"([a-f0-9]+)"/i;
+// Fallback por si esta clave cambia de nombre en el futuro: el objeto estándar que
+// WordPress core genera al encolar el script "wp-api-request".
 const WP_API_SETTINGS_REGEX = /wpApiSettings\s*=\s*(\{[\s\S]*?\});/;
-// Fallback por si el sitio no usa wp-api-request tal cual: cualquier "nonce":"..".
+// Último recurso: cualquier "nonce":"..", puede coger el de otro plugin.
 const GENERIC_NONCE_REGEX = /"nonce"\s*:\s*"([a-f0-9]+)"/i;
 const NONCE_TTL_MS = 10 * 60 * 1000;
 
@@ -46,6 +51,9 @@ function baseHeaders(): Record<string, string> {
 }
 
 function extractNonce(html: string): string | undefined {
+  const wpRestMatch = html.match(WP_REST_NONCE_REGEX);
+  if (wpRestMatch) return wpRestMatch[1];
+
   const apiSettingsMatch = html.match(WP_API_SETTINGS_REGEX);
   if (apiSettingsMatch) {
     try {
