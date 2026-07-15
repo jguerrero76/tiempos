@@ -91,16 +91,29 @@ Añade `&fresh=1` para forzar que ignore la cache y consulte AUCORSA en vivo.
 
 ## Respuesta
 
+AUCORSA devuelve un fragmento HTML (pensado para inyectarse directo en su propia web),
+no JSON. Esta API lo parsea (`src/services/estimationsParser.ts`) a una lista de líneas
+con sus próximos tiempos de llegada:
+
 ```json
 {
-  "data": { /* respuesta tal cual de AUCORSA */ },
+  "data": [
+    {
+      "linea": "4",
+      "ruta": "FIDIANA - RENFE - MIRALBAIDA",
+      "color": "#ee96be",
+      "minutos1": "4",
+      "minutos2": "18"
+    }
+  ],
   "cached": false,
   "fetchedAt": "2026-07-15T12:00:00.000Z"
 }
 ```
 
-Si quieres que la API renombre/normalice los campos de `data` (línea, minutos,
-destino...), dime qué forma tiene la respuesta real de AUCORSA y lo ajustamos.
+Si la parada no tiene estimaciones (aparece "ppp-no-estimations" en el HTML de AUCORSA),
+`data` es un array vacío `[]`. `minutos1`/`minutos2` son `"---"` si esa estimación no
+está disponible, o `"0"` para "ahora mismo".
 
 ## Build para producción
 
