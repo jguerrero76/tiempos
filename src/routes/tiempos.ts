@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { AucorsaAuthError, fetchEstimations } from "../services/aucorsaClient";
 import * as cache from "../services/cache";
-import { parseEstimations } from "../services/estimationsParser";
+import { parseStopResponse, StopResponse } from "../services/estimationsParser";
 
 export const tiemposRouter = Router();
 
@@ -21,36 +21,28 @@ tiemposRouter.get("/tiempos", async (req, res) => {
     return;
   }
 
-  // El body es el array a secas (mismo contrato que get_stop_times() en el cliente
-  // Python de referencia); los metadatos de cache van en cabeceras, no en el body.
   if (!fresh) {
     const memHit = cache.getFromMemory(stopId, line);
     if (memHit) {
-      res.set("X-Cache", "HIT");
-      res.set("X-Cache-Fetched-At", new Date(memHit.fetchedAt).toISOString());
-      res.json(memHit.payload);
+      res.json({ ...(memHit.payload as StopResponse), stale: false });
       return;
     }
   }
 
   try {
     const rawHtml = await fetchEstimations({ stopId, line });
-    const payload = parseEstimations(String(rawHtml));
+    const payload = parseStopResponse(String(rawHtml), stopId);
     cache.setMemory(stopId, line, payload);
     cache.upsertDb(stopId, line, payload).catch((err) => {
       console.error("No se pudo guardar la respuesta en la cache de base de datos:", err);
     });
-    res.set("X-Cache", "MISS");
-    res.set("X-Cache-Fetched-At", new Date().toISOString());
-    res.json(payload);
+    res.json({ ...payload, stale: false });
   } catch (err) {
     console.error("Error consultando AUCORSA:", err);
 
     const dbHit = await cache.getFromDb(stopId, line).catch(() => undefined);
     if (dbHit) {
-      res.set("X-Cache", "STALE");
-      res.set("X-Cache-Fetched-At", new Date(dbHit.fetchedAt).toISOString());
-      res.json(dbHit.payload);
+      res.json({ ...(dbHit.payload as StopResponse), stale: true });
       return;
     }
 

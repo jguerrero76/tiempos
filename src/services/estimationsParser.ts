@@ -39,7 +39,27 @@ export interface StopEstimation {
   minutos2: string;
 }
 
+export interface StopResponse {
+  parada: number;
+  nombre: string | null;
+  estimaciones: StopEstimation[];
+}
+
 export class EstimationsParseError extends Error {}
+
+// AUCORSA incluye el nombre de la parada en el propio fragmento, p.ej.:
+// <div class="ppp-stop-label">Parada 413: Paseo de los Verdiales D.C.</div>
+// Lo leemos de ahí en vez de mantener un stops.json aparte, así nunca se desincroniza.
+const STOP_LABEL_REGEX = /ppp-stop-label[^>]*>([\s\S]*?)<\/div>/;
+const STOP_NAME_REGEX = /^Parada\s+\d+:\s*(.+)$/i;
+
+function extractStopName(raw: string): string | null {
+  const labelMatch = raw.match(STOP_LABEL_REGEX);
+  if (!labelMatch) return null;
+  const label = stripHtml(labelMatch[1]);
+  const nameMatch = label.match(STOP_NAME_REGEX);
+  return (nameMatch ? nameMatch[1] : label).trim() || null;
+}
 
 export function parseEstimations(raw: string): StopEstimation[] {
   if (raw.includes("ppp-no-estimations")) return [];
@@ -72,4 +92,12 @@ export function parseEstimations(raw: string): StopEstimation[] {
       minutos2: estimationBlocks[1] ? minutesFromBlock(estimationBlocks[1]) : "---",
     };
   });
+}
+
+export function parseStopResponse(raw: string, stopId: string): StopResponse {
+  return {
+    parada: Number(stopId),
+    nombre: extractStopName(raw),
+    estimaciones: parseEstimations(raw),
+  };
 }

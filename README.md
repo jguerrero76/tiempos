@@ -92,35 +92,40 @@ Añade `&fresh=1` para forzar que ignore la cache y consulte AUCORSA en vivo.
 ## Respuesta
 
 AUCORSA devuelve un fragmento HTML (pensado para inyectarse directo en su propia web),
-no JSON. Esta API lo parsea (`src/services/estimationsParser.ts`) y el body de la
-respuesta es directamente ese array (mismo contrato que `get_stop_times()` en el
-cliente Python de referencia, sin envoltorio):
+no JSON. Esta API lo parsea (`src/services/estimationsParser.ts`) a:
 
 ```json
-[
-  {
-    "linea": "4",
-    "ruta": "FIDIANA - RENFE - MIRALBAIDA",
-    "color": "#ee96be",
-    "minutos1": "4",
-    "minutos2": "18"
-  }
-]
+{
+  "parada": 413,
+  "nombre": "Paseo de los Verdiales D.C.",
+  "estimaciones": [
+    {
+      "linea": "4",
+      "ruta": "FIDIANA - RENFE - MIRALBAIDA",
+      "color": "#ee96be",
+      "minutos1": "4",
+      "minutos2": "18"
+    }
+  ],
+  "stale": false
+}
 ```
 
-Si la parada no tiene estimaciones (aparece "ppp-no-estimations" en el HTML de AUCORSA),
-el body es un array vacío `[]`. `minutos1`/`minutos2` son `"---"` si esa estimación no
-está disponible, o `"0"` para "ahora mismo".
-
-Los metadatos de cache van en cabeceras de la respuesta, no en el body:
-
-- `X-Cache`: `MISS` (consulta en vivo a AUCORSA), `HIT` (cache en memoria) o `STALE`
-  (AUCORSA falló y se sirvió la última respuesta guardada en Postgres)
-- `X-Cache-Fetched-At`: timestamp ISO de cuándo se obtuvo ese dato
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `parada` | int | Código de la parada consultada (`?parada=`). |
+| `nombre` | string \| null | Nombre de la parada, extraído del propio HTML de AUCORSA (`ppp-stop-label`); `null` si no aparece. |
+| `estimaciones` | array | Líneas con sus tiempos de llegada; `[]` si no hay buses (`ppp-no-estimations`). |
+| `estimaciones[].linea` | string | Número/código de línea. |
+| `estimaciones[].ruta` | string | Descripción del recorrido. |
+| `estimaciones[].color` | string | Color hex asociado a la línea. |
+| `estimaciones[].minutos1` | string | Minutos hasta el próximo autobús (`"---"` si no hay dato, `"0"` si es "ahora"). |
+| `estimaciones[].minutos2` | string | Minutos hasta el segundo autobús (o `"---"`). |
+| `stale` | boolean | `true` si AUCORSA falló y se sirvió la última respuesta guardada en Postgres en su lugar. |
 
 Los errores (parámetro `parada` ausente, fallo de AUCORSA sin cache disponible, etc.)
-sí devuelven un objeto JSON `{"error": "...", "detail": "..."}` con el status HTTP
-correspondiente (400/500/502), ya que no hay una lista de estimaciones que devolver.
+devuelven un objeto JSON `{"error": "...", "detail": "..."}` con el status HTTP
+correspondiente (400/500/502).
 
 ## Build para producción
 
@@ -156,8 +161,8 @@ curl "https://tiempos-nine.vercel.app/api/tiempos?parada=413&linea=4"
 - `/health` debería devolver `{"status":"ok"}`. Si da 500, revisa los logs de la
   función en Vercel (Deployments → el deployment → Functions) — casi seguro falta
   `AUCORSA_COOKIE`.
-- `/api/tiempos` debería devolver un array como `[{"linea":"4",...}]` con datos reales
-  de AUCORSA. Un 502 con `detail` sobre el nonce/cookie significa que la cookie ha
+- `/api/tiempos` debería devolver `{"parada":413,"nombre":"...","estimaciones":[...],"stale":false}`
+  con datos reales de AUCORSA. Un 502 con `detail` sobre el nonce/cookie significa que la cookie ha
   caducado o `AUCORSA_COOKIE` está mal copiada.
 
 Nota: al ser funciones serverless, la cache en memoria (y el nonce cacheado) se
