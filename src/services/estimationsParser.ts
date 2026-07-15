@@ -69,7 +69,7 @@ export function parseEstimations(raw: string): StopEstimation[] {
 
   if (containers.length === 0) {
     throw new EstimationsParseError(
-      `Respuesta inesperada de AUCORSA (no se encontraron estimaciones). Primeros 300 caracteres: ${raw.slice(0, 300)}`
+      `Respuesta inesperada de AUCORSA (no se encontraron estimaciones). Respuesta completa: ${raw.slice(0, 3000)}`
     );
   }
 

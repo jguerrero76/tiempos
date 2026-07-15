@@ -136,13 +136,13 @@ async function requestEstimations(stopId: string, line: string | undefined, nonc
   if (res.status === 401 || res.status === 403) {
     const body = await res.text().catch(() => "");
     throw new AucorsaAuthError(
-      `AUCORSA rechazó la petición (status ${res.status}). El nonce probablemente ha caducado. Respuesta de AUCORSA: ${body.slice(0, 500)}`
+      `AUCORSA rechazó la petición (status ${res.status}). Respuesta completa: ${body.slice(0, 3000)}`
     );
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`AUCORSA respondió con status ${res.status}. Respuesta: ${body.slice(0, 500)}`);
+    throw new Error(`AUCORSA respondió con status ${res.status}. Respuesta completa: ${body.slice(0, 3000)}`);
   }
 
   // AUCORSA normalmente envuelve el fragmento HTML como un string JSON
