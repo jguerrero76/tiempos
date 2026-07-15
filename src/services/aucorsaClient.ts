@@ -20,6 +20,39 @@ const NONCE_TTL_MS = 10 * 60 * 1000;
 export class AucorsaAuthError extends Error {}
 export class AucorsaConfigError extends Error {}
 
+// De todo lo que el navegador manda como cookie, solo esto hace falta para que
+// aucorsa.es reconozca la petición como "usuario logueado": la sesión de WordPress y
+// el bypass del firewall Wordfence. El resto (consentimiento de cookies, número de
+// tarjeta prepago guardado para el formulario de recarga, etc.) no tiene nada que ver
+// con la autenticación, así que ni lo guardamos en memoria ni lo reenviamos a AUCORSA.
+const ESSENTIAL_COOKIE_PREFIXES = ["wordpress_logged_in_", "wfwaf-authcookie-"];
+
+function sanitizeCookie(raw: string, label: string): string {
+  const parts = raw
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const kept = parts.filter((part) => {
+    const name = part.split("=")[0];
+    return ESSENTIAL_COOKIE_PREFIXES.some((prefix) => name.startsWith(prefix));
+  });
+
+  if (kept.length === 0) {
+    // No reconocemos ninguna cookie esperada (p. ej. cambiaron los nombres en
+    // AUCORSA): mejor mandar todo tal cual que romper la petición sin más.
+    console.warn(
+      `${label}: no se reconoció ninguna cookie de sesión esperada (wordpress_logged_in_*/wfwaf-authcookie-*); se envía la cookie completa sin filtrar.`
+    );
+    return raw;
+  }
+
+  if (kept.length < parts.length) {
+    console.warn(`${label}: se descartaron ${parts.length - kept.length} cookie(s) no esenciales para la autenticación.`);
+  }
+
+  return kept.join("; ");
+}
+
 // Una "sesión" = una cuenta AUCORSA (su cookie), con su propio nonce cacheado y su
 // propio estado de salud. El nonce está atado a la sesión de WordPress, así que no se
 // puede compartir entre cuentas: cada una necesita su propio ciclo de refresco.
@@ -38,8 +71,8 @@ let roundRobinIndex = 0;
 // reinicios en caliente; en producción se calcula una sola vez por instancia fría).
 function getSessions(): Session[] {
   if (sessionsSourceLength !== config.aucorsaCookies.length) {
-    sessions = config.aucorsaCookies.map((cookie) => ({
-      cookie,
+    sessions = config.aucorsaCookies.map((cookie, i) => ({
+      cookie: sanitizeCookie(cookie, `AUCORSA_COOKIES[${i}]`),
       nonceFetchedAt: 0,
       unhealthyUntil: 0,
     }));

@@ -30,6 +30,12 @@ Con esa cookie cualquiera podría hacerse pasar por tu cuenta en aucorsa.es.
   loguearte para invalidarla.
 - En producción, guárdala como variable de entorno/secreto de tu plataforma de
   despliegue (Vercel, Railway, Fly.io...), no en un archivo dentro del repo.
+- Puedes pegar el header `cookie` completo tal cual lo copias del navegador: la API
+  filtra automáticamente y solo usa/reenvía `wordpress_logged_in_*` y
+  `wfwaf-authcookie-*` (lo único que hace falta para autenticarse), descartando el
+  resto (p. ej. `aucorsa_prerecharge_card_number`, tu número de tarjeta guardado, o
+  `cookieyes-consent`). Aun así, mejor no dejar esos datos de más tiempo del necesario
+  en ningún sitio — bórralos del portapapeles/historial una vez configurada la variable.
 
 ## Cómo obtener `AUCORSA_COOKIE` y `AUCORSA_NONCE`
 
