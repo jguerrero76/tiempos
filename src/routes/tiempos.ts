@@ -31,7 +31,6 @@ tiemposRouter.get("/tiempos", async (c) => {
   } catch (err: unknown) {
     console.error("Error consultando AUCORSA:", err);
 
-    // Sin base de datos, devolvemos error directamente
     const status = err instanceof AucorsaAuthError ? 502 : 500;
     return c.json(
       {

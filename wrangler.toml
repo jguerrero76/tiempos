@@ -3,6 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Para usar un dominio personalizado, descomenta y ajusta:
+# routes = [
+#   { pattern = "api.tudominio.com", custom_domain = true },
+#   # o un subdirectorio:
+#   # { pattern = "tudominio.com/api/*", zone_id = "TU_ZONE_ID" },
+# ]
+
 [vars]
 AUCORSA_BASE_URL = "https://aucorsa.es"
 AUCORSA_API_BASE_URL = "https://lightapi.aucorsa.es"

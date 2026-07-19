@@ -13,11 +13,13 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.10",
     "he": "^1.2.0",
     "hono": "^4.12.31"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260702.1",
+    "@types/node": "^26.1.1",
     "typescript": "^5.5.4",
     "wrangler": "^3.100.0"
   }
