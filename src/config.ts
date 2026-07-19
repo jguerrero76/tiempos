@@ -6,7 +6,10 @@ import "dotenv/config";
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   databaseUrl: process.env.DATABASE_URL,
+  // URL base para el scrape del nonce y páginas públicas
   aucorsaBaseUrl: process.env.AUCORSA_BASE_URL ?? "https://aucorsa.es",
+  // URL base para la API de estimaciones (lightapi es pública, sin autenticación)
+  aucorsaApiBaseUrl: process.env.AUCORSA_API_BASE_URL ?? "https://lightapi.aucorsa.es",
   // Fallback manual si el refresco automático del nonce alguna vez falla (ver
   // aucorsaClient.ts). No hace falta en el uso normal.
   aucorsaNonce: process.env.AUCORSA_NONCE || undefined,

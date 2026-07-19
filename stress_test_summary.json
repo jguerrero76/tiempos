@@ -1,0 +1,12 @@
+{
+  "durationSeconds": 1958,
+  "totalRequests": 25,
+  "ok": 25,
+  "authErrors": 0,
+  "otherErrors": 0,
+  "successRate": "100.0%",
+  "avgResponseTimeMs": 438,
+  "minResponseTimeMs": 363,
+  "maxResponseTimeMs": 655,
+  "endTime": "2026-07-19T12:49:10.068Z"
+}

@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { buildRandomHeaders, getRandomProfile } from "./browserProfiles";
 
 // aucorsa.es usa el theme/builder Bricks, que expone en el HTML VARIOS nonces
 // distintos en el mismo objeto: "nonce" (propio de Bricks, rutas bricks/v1),
@@ -8,6 +9,11 @@ import { config } from "../config";
 // devuelve el propio endpoint de estimaciones), así que ese es el que hay que imitar;
 // en la práctica coincide con wpRestNonce, pero si algún día dejan de coincidir,
 // ajax_nonce es la fuente de verdad porque es literalmente lo que usa el sitio.
+// 
+// La API ahora está en lightapi.aucorsa.es (subdominio público sin autenticación).
+// 
+// Las peticiones se hacen con perfiles de navegador rotativos (ver browserProfiles.ts)
+// para simular distintos dispositivos y evitar detección por patrones fijos.
 const AJAX_NONCE_REGEX = /"ajax_nonce"\s*:\s*"([a-f0-9]+)"/i;
 const WP_REST_NONCE_REGEX = /"wpRestNonce"\s*:\s*"([a-f0-9]+)"/i;
 // Fallback por si estas claves cambian de nombre en el futuro: el objeto estándar que
@@ -24,25 +30,6 @@ export class AucorsaAuthError extends Error {}
 // cuenta. No se envía ninguna cookie de usuario.
 let cachedNonce: string | undefined;
 let nonceFetchedAt = 0;
-
-function baseHeaders(): Record<string, string> {
-  return {
-    accept: "*/*",
-    "accept-language": "es-ES,es;q=0.6",
-    "cache-control": "no-cache",
-    pragma: "no-cache",
-    priority: "u=1, i",
-    "sec-ch-ua": '"Not;A=Brand";v="8", "Chromium";v="150", "Brave";v="150"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"macOS"',
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-origin",
-    "sec-gpc": "1",
-    "user-agent": config.aucorsaUserAgent,
-    "x-requested-with": "XMLHttpRequest",
-  };
-}
 
 function extractNonce(html: string): string | undefined {
   const ajaxNonceMatch = html.match(AJAX_NONCE_REGEX);
@@ -68,7 +55,7 @@ function extractNonce(html: string): string | undefined {
 async function fetchPageHtml(line?: string): Promise<{ status: number; html: string }> {
   const path = line ? `/linea/${encodeURIComponent(line)}/` : "/";
   const res = await fetch(`${config.aucorsaBaseUrl}${path}`, {
-    headers: baseHeaders(),
+    headers: buildRandomHeaders(),
   });
   return { status: res.status, html: await res.text() };
 }
@@ -118,7 +105,7 @@ export interface EstimationsParams {
 }
 
 async function requestEstimations(stopId: string, line: string | undefined, nonce: string): Promise<unknown> {
-  const url = new URL(`${config.aucorsaBaseUrl}/wp-json/aucorsa/v1/estimations/stop`);
+  const url = new URL(`${config.aucorsaApiBaseUrl}/wp-json/aucorsa/v1/estimations/stop`);
   url.searchParams.set("line", "");
   url.searchParams.set("current_line", line ?? "");
   url.searchParams.set("stop_id", stopId);
@@ -126,7 +113,8 @@ async function requestEstimations(stopId: string, line: string | undefined, nonc
 
   const res = await fetch(url.toString(), {
     headers: {
-      ...baseHeaders(),
+      ...buildRandomHeaders(),
+      origin: config.aucorsaBaseUrl,
       referer: line
         ? `${config.aucorsaBaseUrl}/linea/${encodeURIComponent(line)}/`
         : config.aucorsaBaseUrl,
