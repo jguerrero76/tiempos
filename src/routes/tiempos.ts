@@ -1,55 +1,44 @@
-import { Router } from "express";
+import { Hono } from "hono";
+import { Env, getConfig } from "../config";
 import { AucorsaAuthError, fetchEstimations } from "../services/aucorsaClient";
-import * as cache from "../services/cache";
 import { parseStopResponse, StopResponse } from "../services/estimationsParser";
+import { getFromMemory, setMemory } from "../services/cache";
 
-export const tiemposRouter = Router();
+export const tiemposRouter = new Hono<{ Bindings: Env }>();
 
-function firstQueryValue(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-  return undefined;
-}
-
-tiemposRouter.get("/tiempos", async (req, res) => {
-  const stopId = firstQueryValue(req.query.parada);
-  const line = firstQueryValue(req.query.linea);
-  const fresh = firstQueryValue(req.query.fresh) === "1";
+tiemposRouter.get("/tiempos", async (c) => {
+  const config = getConfig(c.env);
+  const stopId = c.req.query("parada");
+  const line = c.req.query("linea") || undefined;
+  const fresh = c.req.query("fresh") === "1";
 
   if (!stopId) {
-    res.status(400).json({ error: 'El parámetro "parada" es obligatorio' });
-    return;
+    return c.json({ error: 'El parámetro "parada" es obligatorio' }, 400);
   }
 
   if (!fresh) {
-    const memHit = cache.getFromMemory(stopId, line);
+    const memHit = getFromMemory(stopId, line, config.cacheTtlMs);
     if (memHit) {
-      res.json({ ...(memHit.payload as StopResponse), stale: false });
-      return;
+      return c.json({ ...(memHit.payload as StopResponse), stale: false });
     }
   }
 
   try {
-    const rawHtml = await fetchEstimations({ stopId, line });
+    const rawHtml = await fetchEstimations({ stopId, line, config });
     const payload = parseStopResponse(String(rawHtml), stopId);
-    cache.setMemory(stopId, line, payload);
-    cache.upsertDb(stopId, line, payload).catch((err) => {
-      console.error("No se pudo guardar la respuesta en la cache de base de datos:", err);
-    });
-    res.json({ ...payload, stale: false });
-  } catch (err) {
+    setMemory(stopId, line, payload);
+    return c.json({ ...payload, stale: false });
+  } catch (err: unknown) {
     console.error("Error consultando AUCORSA:", err);
 
-    const dbHit = await cache.getFromDb(stopId, line).catch(() => undefined);
-    if (dbHit) {
-      res.json({ ...(dbHit.payload as StopResponse), stale: true });
-      return;
-    }
-
+    // Sin base de datos, devolvemos error directamente
     const status = err instanceof AucorsaAuthError ? 502 : 500;
-    res.status(status).json({
-      error: "No se pudieron obtener los tiempos de AUCORSA",
-      detail: err instanceof Error ? err.message : String(err),
-    });
+    return c.json(
+      {
+        error: "No se pudieron obtener los tiempos de AUCORSA",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      status
+    );
   }
 });

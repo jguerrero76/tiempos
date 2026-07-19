@@ -1,7 +1,8 @@
-import { Router } from "express";
+import { Hono } from "hono";
+import { Env } from "../config";
 
-export const healthRouter = Router();
+export const healthRouter = new Hono<{ Bindings: Env }>();
 
-healthRouter.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
+healthRouter.get("/health", (c) => {
+  return c.json({ status: "ok" });
 });

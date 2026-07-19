@@ -610,26 +610,22 @@ export async function randomDelay(minDelay = 500, maxDelay = 2500): Promise<void
  * Formato: socks5://user:pass@host:port o http://user:pass@host:port
  * Múltiples proxies separados por comas.
  */
-let proxyList: string[] | undefined;
 let proxyIndex = 0;
 
-function getProxyList(): string[] {
-  if (!proxyList) {
-    const raw = process.env.PROXY_LIST || "";
-    proxyList = raw
-      .split(",")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
-  }
-  return proxyList;
+function getProxyList(proxyListStr: string | undefined): string[] {
+  if (!proxyListStr) return [];
+  return proxyListStr
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
 }
 
 /**
  * Devuelve un proxy aleatorio de la lista configurada, o undefined si no hay.
  * Rota secuencialmente para distribuir las peticiones entre los proxies.
  */
-export function getNextProxy(): string | undefined {
-  const list = getProxyList();
+export function getNextProxy(proxyListStr?: string): string | undefined {
+  const list = getProxyList(proxyListStr);
   if (list.length === 0) return undefined;
   const proxy = list[proxyIndex % list.length];
   proxyIndex++;
@@ -639,6 +635,6 @@ export function getNextProxy(): string | undefined {
 /**
  * Devuelve true si hay proxies configurados.
  */
-export function hasProxies(): boolean {
-  return getProxyList().length > 0;
+export function hasProxies(proxyListStr?: string): boolean {
+  return getProxyList(proxyListStr).length > 0;
 }

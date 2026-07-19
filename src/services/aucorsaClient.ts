@@ -1,4 +1,3 @@
-import { config } from "../config";
 import { buildRandomHeaders, getRandomProfile } from "./browserProfiles";
 
 // aucorsa.es usa el theme/builder Bricks, que expone en el HTML VARIOS nonces
@@ -52,17 +51,23 @@ function extractNonce(html: string): string | undefined {
   return genericMatch?.[1];
 }
 
-async function fetchPageHtml(line?: string): Promise<{ status: number; html: string }> {
+async function fetchPageHtml(
+  aucorsaBaseUrl: string,
+  line?: string
+): Promise<{ status: number; html: string }> {
   const path = line ? `/linea/${encodeURIComponent(line)}/` : "/";
-  const res = await fetch(`${config.aucorsaBaseUrl}${path}`, {
+  const res = await fetch(`${aucorsaBaseUrl}${path}`, {
     headers: buildRandomHeaders(),
   });
   return { status: res.status, html: await res.text() };
 }
 
-async function fetchFreshNonce(line?: string): Promise<string | undefined> {
+async function fetchFreshNonce(
+  aucorsaBaseUrl: string,
+  line?: string
+): Promise<string | undefined> {
   try {
-    const { status, html } = await fetchPageHtml(line);
+    const { status, html } = await fetchPageHtml(aucorsaBaseUrl, line);
     if (status < 200 || status >= 300) return undefined;
     return extractNonce(html);
   } catch {
@@ -70,7 +75,16 @@ async function fetchFreshNonce(line?: string): Promise<string | undefined> {
   }
 }
 
-async function getNonce(line: string | undefined, forceRefresh: boolean): Promise<string> {
+interface NonceConfig {
+  aucorsaBaseUrl: string;
+  aucorsaNonce?: string;
+}
+
+async function getNonce(
+  config: NonceConfig,
+  line: string | undefined,
+  forceRefresh: boolean
+): Promise<string> {
   const now = Date.now();
   if (!forceRefresh && cachedNonce && now - nonceFetchedAt < NONCE_TTL_MS) {
     return cachedNonce;
@@ -83,7 +97,7 @@ async function getNonce(line: string | undefined, forceRefresh: boolean): Promis
     return config.aucorsaNonce;
   }
 
-  const fresh = await fetchFreshNonce(line);
+  const fresh = await fetchFreshNonce(config.aucorsaBaseUrl, line);
   if (fresh) {
     cachedNonce = fresh;
     nonceFetchedAt = now;
@@ -102,9 +116,19 @@ async function getNonce(line: string | undefined, forceRefresh: boolean): Promis
 export interface EstimationsParams {
   stopId: string;
   line?: string;
+  config: {
+    aucorsaBaseUrl: string;
+    aucorsaApiBaseUrl: string;
+    aucorsaNonce?: string;
+  };
 }
 
-async function requestEstimations(stopId: string, line: string | undefined, nonce: string): Promise<unknown> {
+async function requestEstimations(
+  stopId: string,
+  line: string | undefined,
+  nonce: string,
+  config: { aucorsaApiBaseUrl: string; aucorsaBaseUrl: string }
+): Promise<unknown> {
   const url = new URL(`${config.aucorsaApiBaseUrl}/wp-json/aucorsa/v1/estimations/stop`);
   url.searchParams.set("line", "");
   url.searchParams.set("current_line", line ?? "");
@@ -147,17 +171,24 @@ async function requestEstimations(stopId: string, line: string | undefined, nonc
   return bodyText;
 }
 
-export async function fetchEstimations({ stopId, line }: EstimationsParams): Promise<unknown> {
-  const nonce = await getNonce(line, false);
+export async function fetchEstimations({ stopId, line, config }: EstimationsParams): Promise<unknown> {
+  const nonce = await getNonce(config, line, false);
 
   try {
-    return await requestEstimations(stopId, line, nonce);
+    return await requestEstimations(stopId, line, nonce, {
+      aucorsaApiBaseUrl: config.aucorsaApiBaseUrl,
+      aucorsaBaseUrl: config.aucorsaBaseUrl,
+    });
   } catch (err) {
     if (!(err instanceof AucorsaAuthError)) throw err;
 
     // El nonce cacheado puede haber caducado justo ahora: invalidamos y reintentamos una vez.
     cachedNonce = undefined;
-    const refreshedNonce = await getNonce(line, true);
-    return await requestEstimations(stopId, line, refreshedNonce);
+    const refreshedNonce = await getNonce(config, line, true);
+    return await requestEstimations(stopId, line, refreshedNonce, {
+      aucorsaApiBaseUrl: config.aucorsaApiBaseUrl,
+      aucorsaBaseUrl: config.aucorsaBaseUrl,
+    });
   }
 }
+
