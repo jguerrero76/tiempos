@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { Env } from "../config";
+import { Env } from "../config.js";
 
 export const healthRouter = new Hono<{ Bindings: Env }>();
 

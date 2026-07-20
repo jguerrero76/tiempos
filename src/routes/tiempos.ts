@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { Env, getConfig } from "../config";
-import { AucorsaAuthError, fetchEstimations } from "../services/aucorsaClient";
-import { parseStopResponse, StopResponse } from "../services/estimationsParser";
-import { getFromMemory, setMemory } from "../services/cache";
+import { Env, getConfig } from "../config.js";
+import { AucorsaAuthError, fetchEstimations } from "../services/aucorsaClient.js";
+import { parseStopResponse, StopResponse } from "../services/estimationsParser.js";
+import { getFromMemory, setMemory } from "../services/cache.js";
 
 export const tiemposRouter = new Hono<{ Bindings: Env }>();
 

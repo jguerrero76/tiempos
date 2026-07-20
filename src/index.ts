@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { Env } from "./config";
-import { tiemposRouter } from "./routes/tiempos";
-import { healthRouter } from "./routes/health";
+import { Env } from "./config.js";
+import { tiemposRouter } from "./routes/tiempos.js";
+import { healthRouter } from "./routes/health.js";
 
 const app = new Hono<{ Bindings: Env }>();
 

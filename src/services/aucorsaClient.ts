@@ -1,4 +1,4 @@
-import { buildRandomHeaders, getRandomProfile } from "./browserProfiles";
+import { buildRandomHeaders, getRandomProfile } from "./browserProfiles.js";
 
 // aucorsa.es usa el theme/builder Bricks, que expone en el HTML VARIOS nonces
 // distintos en el mismo objeto: "nonce" (propio de Bricks, rutas bricks/v1),
