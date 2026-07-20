@@ -118,9 +118,10 @@ npm start
 
 ## Despliegue en Vercel
 
-El proyecto incluye `api/index.ts` (exporta la app de Express) y `vercel.json`
-(reenvía todas las rutas a esa función), que es la forma estándar de desplegar
-una app Express como función serverless en Vercel.
+El proyecto usa el despliegue "zero-config" de Vercel para Hono: `vercel.json`
+solo fija `"framework": "hono"` y Vercel detecta automáticamente el export por
+defecto de la app Hono en `src/index.ts`, sin necesitar una función serverless
+manual en `api/`.
 
 En el dashboard de Vercel (Project → Settings → Environment Variables) puedes
 configurar opcionalmente:
