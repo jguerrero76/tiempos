@@ -1,10 +1,9 @@
 {
   "version": 2,
-  "buildCommand": "npx tsc",
+  "framework": null,
   "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {
-      "runtime": "nodejs@20.x",
       "maxDuration": 30
     }
   },
