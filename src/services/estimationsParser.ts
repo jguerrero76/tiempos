@@ -1,4 +1,4 @@
-import { decode } from "he";
+import he from "he";
 
 // Port de la lógica de parseo ya validada por el consumidor de esta API (cliente
 // Python que habla directamente con aucorsa.es). AUCORSA no expone JSON estructurado
@@ -8,7 +8,7 @@ import { decode } from "he";
 const TAG_REGEX = /<[^>]+>/g;
 
 function stripHtml(fragment: string): string {
-  return decode(fragment.replace(TAG_REGEX, "")).trim();
+  return he.decode(fragment.replace(TAG_REGEX, "")).trim();
 }
 
 function attr(fragment: string, name: string): string {
