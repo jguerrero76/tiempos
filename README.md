@@ -118,10 +118,11 @@ npm start
 
 ## Despliegue en Vercel
 
-El proyecto usa el despliegue "zero-config" de Vercel para Hono: `vercel.json`
-solo fija `"framework": "hono"` y Vercel detecta automáticamente el export por
-defecto de la app Hono en `src/index.ts`, sin necesitar una función serverless
-manual en `api/`.
+El proyecto incluye `api/index.ts` (envuelve la app Hono con el adaptador
+`hono/vercel`) y `vercel.json` (fuerza `"framework": null` para evitar que
+Vercel reutilice un Framework Preset erróneo guardado en el dashboard, y
+reenvía todas las rutas a esa función). `package.json` declara
+`"type": "module"` porque el build compila a ESM.
 
 En el dashboard de Vercel (Project → Settings → Environment Variables) puedes
 configurar opcionalmente:
