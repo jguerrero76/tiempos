@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "description": "API que expone los tiempos de llegada de autobuses de AUCORSA (Córdoba) - Cloudflare Workers",
+  "type": "module",
   "engines": {
     "node": ">=18"
   },
